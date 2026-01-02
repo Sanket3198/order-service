@@ -5,7 +5,9 @@ import java.math.BigDecimal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.ecommerce.order.client.InventoryClient;
 import com.ecommerce.order.client.ProductClient;
+import com.ecommerce.order.dto.OrderRequest;
 import com.ecommerce.order.dto.ProductResponseDto;
 import com.ecommerce.order.model.Order;
 import com.ecommerce.order.repository.OrderServiceRepository;
@@ -16,25 +18,38 @@ import com.ecommerce.order.service.OrderService;
 public class OrderServiceImpl implements OrderService {
 
 	@Autowired
-	OrderServiceRepository repository;
+	OrderServiceRepository orderRepository;
 	
 	@Autowired
-    private ProductClient productClient;
+    ProductClient productClient;
 	
-	public Order placeOrder(Long productId, int quantity) {
-        ProductResponseDto product = productClient.getProduct(productId);
-
-        if (product.getQuantity() < quantity) {
-            throw new RuntimeException("Insufficient stock");
+	@Autowired
+	InventoryClient inventoryClient;
+	
+	public Order placeOrder(OrderRequest request) {
+        ProductResponseDto product = productClient.getProduct(request.getProductId());
+        
+        boolean inStock = inventoryClient.checkStock(
+                request.getProductId(),
+                request.getQuantity()
+        );
+        
+        if (!inStock) {
+            throw new RuntimeException("Product out of stock");
         }
-
-        Order order = new Order();
-        order.setProductId(productId);
-        order.setQuantity(quantity);
-        order.setTotalPrice(
-                product.getPrice().multiply(BigDecimal.valueOf(quantity))
+        
+        inventoryClient.reduceStock(
+                request.getProductId(),
+                request.getQuantity()
         );
 
-        return repository.save(order);
+        Order order = new Order();
+        order.setProductId(request.getProductId());
+        order.setQuantity(request.getQuantity());
+        order.setTotalPrice(
+                product.getPrice().multiply(BigDecimal.valueOf(request.getQuantity()))
+        );
+
+        return orderRepository.save(order);
     }
 }
